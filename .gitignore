@@ -1,0 +1,16 @@
+# Python bytecode
+*.pyc
+__pycache__/
+
+# Data directories
+data/
+logs/
+
+# Model files
+models/
+
+# Virtual environment
+venv/
+
+# Environment variables
+.env

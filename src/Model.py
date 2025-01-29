@@ -13,6 +13,7 @@ import torch.nn as nn
 import numpy as np
 from PIL import Image
 import matplotlib.pyplot as plt
+import torch.nn.functional as F
 
 
 custom_path = "C:/Users/parth/OneDrive/Documents/ML project/Nike-shoe-classifier/Data"
@@ -30,6 +31,13 @@ else:
     print("CUDA is not available. Check installation or drivers.")
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print(device)
+model = torch.load("fine_tuned_resnet50.pkl", map_location=device)
+
+# Move to GPU if available
+model = model.to(device)
+
+# Set to evaluation mode
+model.eval()
 
 
 # Step 2: Data preprocessing and loading
@@ -123,9 +131,12 @@ def predict_image(image_path, model, transform, classes):
         outputs = model(image)
         logits = outputs.logits
         _, predicted_class = torch.max(logits, 1)
-    
-    return classes[predicted_class.item()]
+        probs = F.softmax(logits, dim=1)  # Apply softmax to get probabilities
+        
+        predicted_class = torch.argmax(probs, dim=1).item()  # Get the class index
+        confidence = probs[0, predicted_class].item()
+    return classes[predicted_class.item()] , confidence
 image_path = "C:/Users/parth/OneDrive/Documents/ML project/Screenshot 2025-01-21 185137.png"
-predicted_class = predict_image(image_path, model, transform, dataset.classes)
-print(f"The predicted class for the image is: {predicted_class}")
+predicted_class , confidence= predict_image(image_path, model, transform, dataset.classes)
+print(f"The predicted class for the image is: {predicted_class} , the probabilty is : {confidence: .2f}")
 

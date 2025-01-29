@@ -7,7 +7,7 @@ from Model import create_model, get_transform  # Ensure this matches your struct
 from torchvision import datasets
 
 # Paths
-MODEL_PATH = "/mnt/c/Users/parth/OneDrive/Documents/ML project/fine_tuned_resnet50.pkl"
+MODEL_PATH = "/mnt/c/Users/parth/OneDrive/Documents/ML project/Nike-shoe-classifier/fine_tuned_resnet50.pkl"
 DATASET_PATH = "/mnt/c/Users/parth/OneDrive/Documents/ML project/Nike-shoe-classifier/Data"
 
 # Load class names from dataset

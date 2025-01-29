@@ -4,7 +4,6 @@ __pycache__
 __pycache__/
 
 # Data directories
-data/
 logs/
 
 # Model files
@@ -16,5 +15,4 @@ myenv/
 # Environment variables
 .env
 .log
-.pkl
 .pyc

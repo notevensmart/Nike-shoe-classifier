@@ -4,7 +4,7 @@ from fastapi import FastAPI, File, UploadFile
 from PIL import Image
 from io import BytesIO
 from torchvision import transforms, datasets
-from transformers.models.resnet import ResNetForImageClassification
+from transformers import ResNetForImageClassification
 
 # Paths
 MODEL_PATH = "/mnt/c/Users/parth/OneDrive/Documents/ML project/Nike-shoe-classifier/fine_tuned_resnet50.pkl"
@@ -28,7 +28,8 @@ def get_transform():
 # Load model
 def load_model():
     torch.serialization.add_safe_globals([ResNetForImageClassification])
-    model = ResNetForImageClassification.from_pretrained(MODEL_PATH)
+    model = ResNetForImageClassification.from_pretrained("microsoft/resnet-50")
+    model.load_state_dict(torch.load(MODEL_PATH, map_location="cpu"))
     model.eval()
     return model
 

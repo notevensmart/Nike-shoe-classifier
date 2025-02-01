@@ -25,7 +25,7 @@ def get_transform():
 def load_model():
     torch.serialization.add_safe_globals([ResNetForImageClassification])
     model = ResNetForImageClassification.from_pretrained("microsoft/resnet-50")
-   
+    model.classifier[1]=torch.nn.Linear(in_features=2048,out_features=2)
     state_dict = torch.load(MODEL_PATH, map_location="cuda", weights_only=False)
     model.load_state_dict(state_dict)
     #model = torch.load(MODEL_PATH, map_location="cuda", weights_only=False)

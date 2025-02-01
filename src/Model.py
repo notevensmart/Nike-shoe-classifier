@@ -31,13 +31,9 @@ else:
     print("CUDA is not available. Check installation or drivers.")
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print(device)
-model = torch.load("fine_tuned_resnet50.pkl", map_location=device)
+#model = torch.load("../fine_tuned_resnet50.pkl", map_location=device)
 
-# Move to GPU if available
-model = model.to(device)
 
-# Set to evaluation mode
-model.eval()
 
 
 # Step 2: Data preprocessing and loading
@@ -117,7 +113,7 @@ accuracy = (np.array(all_labels) == np.array(all_preds)).mean()
 print(f"Validation Accuracy: {accuracy:.2f}")
 
 # Step 9: Save the Fine-Tuned Model
-torch.save(model, "fine_tuned_resnet50.pkl")
+torch.save(model.state_dict(), "fine_tuned_resnet50.pth")
 model = model.to(device)
 print("Model saved as 'fine_tuned_resnet50.pkl'")
 

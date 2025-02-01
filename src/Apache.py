@@ -6,7 +6,7 @@ from torchvision import transforms, datasets
 from transformers import ResNetForImageClassification
 
 # Paths
-MODEL_PATH = "/mnt/c/Users/parth/OneDrive/Documents/ML project/Nike-shoe-classifier/fine_tuned_resnet50.pkl"
+MODEL_PATH = "/mnt/c/Users/parth/OneDrive/Documents/ML project/Nike-shoe-classifier/fine_tuned_resnet50.pth"
 DATASET_PATH = "/mnt/c/Users/parth/OneDrive/Documents/ML project/Nike-shoe-classifier/Data"
 
 # Load class names

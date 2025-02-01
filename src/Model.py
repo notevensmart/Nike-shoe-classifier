@@ -2,7 +2,6 @@ from transformers import AutoModelForImageClassification, AutoFeatureExtractor
 from transformers import pipeline
 from transformers import AutoImageProcessor, ResNetForImageClassification
 import tensorflow as tf
-import kagglehub
 import zipfile
 import os
 from torchvision import datasets, transforms

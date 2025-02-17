@@ -47,6 +47,6 @@ def predict(image):
     return predicted_class
 
 # Gradio Interface
-demo = gr.Interface(fn=predict, inputs=gr.Image(type="file"), outputs="text", title="Nike Shoe Classifier")
+demo = gr.Interface(fn=predict, inputs=gr.Image(type="filepath"), outputs="text", title="Nike Shoe Classifier")
 
 demo.launch()

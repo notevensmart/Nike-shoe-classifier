@@ -1,137 +1,144 @@
-from transformers import AutoModelForImageClassification, AutoFeatureExtractor
-from transformers import pipeline
-from transformers import AutoImageProcessor, ResNetForImageClassification
-import tensorflow as tf
-import zipfile
-import os
-from torchvision import datasets, transforms
 import torch
-from torch.utils.data import DataLoader , random_split
-from torch import optim
 import torch.nn as nn
+import torch.optim as optim
+from torchvision import datasets, transforms, models
+from torch.utils.data import DataLoader, random_split
 import numpy as np
-from PIL import Image
-import matplotlib.pyplot as plt
-import torch.nn.functional as F
+import random
+from pathlib import Path
+from tqdm import tqdm
 
+# =============================
+# Configuration
+# =============================
+SEED = 42
+BATCH_SIZE = 32
+EPOCHS = 10
+LR = 1e-4
+DATA_DIR = Path("./Data")  # Relative path for portability
+MODEL_SAVE_PATH = Path("./models/fine_tuned_resnet50_v2.pth")
+LABEL_MAP_PATH = Path("./models/label_map.npy")
+DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-custom_path = "C:/Users/parth/OneDrive/Documents/ML project/Nike-shoe-classifier/Data"
-#os.makedirs(custom_path, exist_ok=True)
-#with zipfile.ZipFile(zip_path, 'r') as zip_ref:
-    #zip_ref.extractall(custom_path)
+# =============================
+# Reproducibility
+# =============================
+torch.manual_seed(SEED)
+np.random.seed(SEED)
+random.seed(SEED)
+torch.backends.cudnn.deterministic = True
+torch.backends.cudnn.benchmark = False
 
-##path = kagglehub.dataset_download("eliasdabbas/nike-shoes-images", path=custom_path)
-print(f"CUDA Available: {torch.cuda.is_available()}")
-print(f"CUDA Device Count: {torch.cuda.device_count()}")
-if torch.cuda.is_available():
-    print(f"Current Device Index: {torch.cuda.current_device()}")
-    print(f"Device Name: {torch.cuda.get_device_name(torch.cuda.current_device())}")
-else:
-    print("CUDA is not available. Check installation or drivers.")
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-print(device)
-#model = torch.load("../fine_tuned_resnet50.pkl", map_location=device)
-
-
-
-
-# Step 2: Data preprocessing and loading
-transform = transforms.Compose([
-    transforms.Resize((224, 224)),
+# =============================
+# Data Augmentation
+# =============================
+train_transform = transforms.Compose([
+    transforms.Resize((256, 256)),
+    transforms.RandomResizedCrop(224, scale=(0.8, 1.0)),
+    transforms.RandomRotation(15),
+    transforms.RandomHorizontalFlip(p=0.5),
+    transforms.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.1),
+    transforms.RandomPerspective(distortion_scale=0.1, p=0.3),
     transforms.ToTensor(),
-    transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])  # Standard for pre-trained models
+    transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
 ])
 
+val_transform = transforms.Compose([
+    transforms.Resize((224, 224)),
+    transforms.CenterCrop(224),
+    transforms.ToTensor(),
+    transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+])
 
-# Apply the transformations
+# =============================
+# Dataset and DataLoader
+# =============================
+dataset = datasets.ImageFolder(root=DATA_DIR, transform=train_transform)
+class_names = dataset.classes
+np.save(LABEL_MAP_PATH, class_names)
 
-dataset = datasets.ImageFolder(root=custom_path, transform=transform) 
-# Step 3: Train-Validation Split
 train_size = int(0.8 * len(dataset))
 val_size = len(dataset) - train_size
 train_dataset, val_dataset = random_split(dataset, [train_size, val_size])
 
-num_classes = len(dataset.classes)
-# DataLoaders for training and validation
-train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True)
-val_loader = DataLoader(val_dataset, batch_size=32, shuffle=False)
+train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True)
+val_loader = DataLoader(val_dataset, batch_size=BATCH_SIZE, shuffle=False)
 
-# Step 4: Load Pre-trained ResNet and Modify for Custom Classes
-model = ResNetForImageClassification.from_pretrained("microsoft/resnet-50")
-in_features = model.classifier[-1].in_features
-model.classifier[-1] = nn.Linear(in_features, num_classes) 
-model = model.to(device)
+# =============================
+# Model Setup
+# =============================
+model = models.resnet50(weights=models.ResNet50_Weights.IMAGENET1K_V1)
+for param in model.parameters():
+    param.requires_grad = False
 
-# Step 5: Define Loss and Optimizer
+# Unfreeze last block for fine-tuning
+for param in model.layer4.parameters():
+    param.requires_grad = True
+
+# Replace classifier head
+num_features = model.fc.in_features
+model.fc = nn.Linear(num_features, len(class_names))
+model = model.to(DEVICE)
+
+# =============================
+# Training Components
+# =============================
 criterion = nn.CrossEntropyLoss()
-optimizer = optim.AdamW(model.parameters(), lr=1e-4)
+optimizer = optim.AdamW(filter(lambda p: p.requires_grad, model.parameters()), lr=LR)
 
-# Step 6: Training Loop
-epochs = 5
-for epoch in range(epochs):
+# =============================
+# Training Loop
+# =============================
+def train_one_epoch(epoch):
     model.train()
-    train_loss = 0
+    total_loss = 0.0
 
-    for images, labels in train_loader:
-        images, labels = images.to(device), labels.to(device)
-        
-        # Forward pass
-        outputs = model(images)  # Output is an object, not raw logits
-        logits = outputs.logits  # Extract logits
-        loss = criterion(logits, labels)  # Compute loss
-        
-        # Backward pass
+    for images, labels in tqdm(train_loader, desc=f"Epoch {epoch+1}/{EPOCHS}"):
+        images, labels = images.to(DEVICE), labels.to(DEVICE)
         optimizer.zero_grad()
+        outputs = model(images)
+        loss = criterion(outputs, labels)
         loss.backward()
         optimizer.step()
-        
-        train_loss += loss.item()
-    
-    print(f"Epoch {epoch + 1}/{epochs}, Train Loss: {train_loss / len(train_loader):.4f}")
+        total_loss += loss.item()
 
-# Step 7: Validation Loop
-model.eval()
-all_labels = []
-all_preds = []
+    avg_loss = total_loss / len(train_loader)
+    return avg_loss
 
-with torch.no_grad():
-    for images, labels in val_loader:
-        images, labels = images.to(device), labels.to(device)
-        
-        # Forward pass
-        outputs = model(images)
-        logits = outputs.logits  # Extract logits
-        _, preds = torch.max(logits, 1)  # Predicted class
-        
-        all_labels.extend(labels.cpu().numpy())
-        all_preds.extend(preds.cpu().numpy())
-
-
-# Step 8: Compute Validation Accuracy
-accuracy = (np.array(all_labels) == np.array(all_preds)).mean()
-print(f"Validation Accuracy: {accuracy:.2f}")
-
-# Step 9: Save the Fine-Tuned Model
-torch.save(model.state_dict(), "fine_tuned_resnet50.pth")
-model = model.to(device)
-print("Model saved as 'fine_tuned_resnet50.pkl'")
-
-# Step 10: Inference on New Images
-def predict_image(image_path, model, transform, classes):
-    image = Image.open(image_path).convert("RGB")
-    image = transform(image).unsqueeze(0).to(device)  # Add batch dimension
-    
+# =============================
+# Validation Loop
+# =============================
+def validate():
     model.eval()
-    with torch.no_grad():
-        outputs = model(image)
-        logits = outputs.logits
-        _, predicted_class = torch.max(logits, 1)
-        probs = F.softmax(logits, dim=1)  # Apply softmax to get probabilities
-        
-        predicted_class = torch.argmax(probs, dim=1).item()  # Get the class index
-        confidence = probs[0, predicted_class].item()
-    return classes[predicted_class.item()] , confidence
-image_path = "C:/Users/parth/OneDrive/Documents/ML project/Screenshot 2025-01-21 185137.png"
-predicted_class , confidence= predict_image(image_path, model, transform, dataset.classes)
-print(f"The predicted class for the image is: {predicted_class} , the probabilty is : {confidence: .2f}")
+    correct = 0
+    total = 0
 
+    with torch.no_grad():
+        for images, labels in val_loader:
+            images, labels = images.to(DEVICE), labels.to(DEVICE)
+            outputs = model(images)
+            _, predicted = torch.max(outputs, 1)
+            total += labels.size(0)
+            correct += (predicted == labels).sum().item()
+
+    accuracy = 100 * correct / total
+    return accuracy
+
+# =============================
+# Main Training Routine
+# =============================
+if __name__ == "__main__":
+    print(f"Training on {DEVICE} with {len(class_names)} classes: {class_names}")
+    best_acc = 0.0
+
+    for epoch in range(EPOCHS):
+        train_loss = train_one_epoch(epoch)
+        val_acc = validate()
+        print(f"Epoch [{epoch+1}/{EPOCHS}] - Train Loss: {train_loss:.4f} | Val Acc: {val_acc:.2f}%")
+
+        if val_acc > best_acc:
+            best_acc = val_acc
+            torch.save(model.state_dict(), MODEL_SAVE_PATH)
+            print(f"✅ Model saved (Val Acc: {best_acc:.2f}%)")
+
+    print(f"Training complete. Best Validation Accuracy: {best_acc:.2f}%")

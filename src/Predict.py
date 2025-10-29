@@ -1,44 +1,64 @@
 import torch
 import torch.nn.functional as F
-from torchvision import transforms
+from torchvision import models, transforms
 from PIL import Image
-from transformers import ResNetForImageClassification
+import numpy as np
+from pathlib import Path
 
-# Define the device
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+# =============================
+# Configuration
+# =============================
+MODEL_PATH = Path("./models/fine_tuned_resnet50_v2.pth")
+LABEL_MAP_PATH = Path("./models/label_map.npy")
+DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+THRESHOLD = 0.85  # Confidence threshold for Real vs Fake
 
-# Load the saved model
-model_path = "fine_tuned_resnet50.pkl"  # Adjust path if needed
-model = torch.load(model_path, map_location=device)
-model = model.to(device)
+# =============================
+# Load Label Map and Model
+# =============================
+class_names = np.load(LABEL_MAP_PATH, allow_pickle=True)
+
+model = models.resnet50(weights=models.ResNet50_Weights.IMAGENET1K_V1)
+num_features = model.fc.in_features
+model.fc = torch.nn.Linear(num_features, len(class_names))
+model.load_state_dict(torch.load(MODEL_PATH, map_location=DEVICE))
+model = model.to(DEVICE)
 model.eval()
 
-# Define transformations (must match what was used during training)
+# =============================
+# Define Transform
+# =============================
 transform = transforms.Compose([
     transforms.Resize((224, 224)),
     transforms.ToTensor(),
     transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
 ])
 
-# Define inference function
-def predict_image(image_path, model, transform, class_names):
-    """Predicts the class of a given image."""
+# =============================
+# Prediction Function
+# =============================
+def predict_image(image_path, threshold=THRESHOLD):
     image = Image.open(image_path).convert("RGB")
-    image = transform(image).unsqueeze(0).to(device)  # Add batch dimension
+    image = transform(image).unsqueeze(0).to(DEVICE)
 
     with torch.no_grad():
         outputs = model(image)
-        logits = outputs.logits  # Extract logits
-        probabilities = F.softmax(logits, dim=1)  # Convert to probabilities
-        predicted_class_idx = torch.argmax(probabilities, dim=1).item()
-        predicted_class = class_names[predicted_class_idx]
-        confidence = probabilities[0, predicted_class_idx].item()  
-        return predicted_class, confidence
+        probs = F.softmax(outputs, dim=1)
+        confidence, pred_idx = torch.max(probs, dim=1)
 
+        pred_label = class_names[pred_idx.item()]
+        confidence = confidence.item()
+
+        # Conservative logic: only label as Real if confidence is high enough
+        if pred_label == "Real" and confidence < threshold:
+            pred_label = "Fake"
+
+    return pred_label, confidence
+
+# =============================
 # Example Usage
+# =============================
 if __name__ == "__main__":
-    image_path = "C:/Users/parth/OneDrive/Documents/ML project/Screenshot 2025-01-21 185137.png"  # Replace with actual test image
-    class_names = ["Fake", "Real"]  # Modify based on training classes
-
-    predicted_class, probability = predict_image(image_path, model, transform, class_names)
-    print(f"Predicted class: {predicted_class} with confidence: {probability:.4f}")
+    test_image = Path("./test_images/example_shoe.jpg")  # Replace with your image path
+    label, conf = predict_image(test_image)
+    print(f"Prediction: {label} | Confidence: {conf:.3f}")
